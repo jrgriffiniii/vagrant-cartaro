@@ -4,6 +4,9 @@
 #
 class profile::cartaro {
 
+  # Drush Module does not permit one to pass environment variable
+  $pg_pass = 'secret'
+
   exec { "download_cartaro":
 
     command => "/usr/bin/wget http://ftp.drupal.org/files/projects/cartaro-7.x-1.5-core.tar.gz -O /tmp/cartaro.tar.gz",
@@ -12,13 +15,10 @@ class profile::cartaro {
   exec { "decompress_cartaro":
 
     command => "/bin/tar -xvf /tmp/cartaro.tar.gz -C /var/www",
-    unless => "/usr/bin/stat /var/www/cartaro-7.x-1.5"
-  }
+    unless => "/usr/bin/stat /var/www/cartaro-7.x-1.5/sites"
+  } ->
 
-  # Drush Module does not permit one to pass environment variable
-  $pg_pass = 'secret'
-
-  include ::drush
+  class { '::drush': } ->
   exec { 'drush_env' :
          command => "/bin/bash -c \"export PGPASS=${pg_pass}\"",
   } ->
