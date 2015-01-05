@@ -4,17 +4,11 @@
 #
 class profile::postgis {
 
-  file { 'pgpass_file':
-
-    path => '/home/vagrant/.pgpass',
-    mode => '0400',
-    content => inline_template('localhost:5432:cartaro:cartaro:secret')
-  }
-  
   class { 'postgresql::globals':
 
     manage_package_repo => true,
     } ->
+    
   class { 'postgresql::server':
 
     listen_addresses => '*',
@@ -34,14 +28,6 @@ class profile::postgis {
   # A proposed modification has been made using pull request 33: https://github.com/camptocamp/puppet-postgis/pull/33
   # @todo Remove this work-around
 
-  class { 'postgresql::server::postgis': }
-  ->
-  postgresql::server::database { 'template_postgis':
-    
-    istemplate => true,
-    template => 'template1',
-  }
-
   $script_path = "/usr/pgsql-${::postgresql::globals::globals_version}/share/contrib/postgis-${::postgresql::globals::globals_postgis_version}"
   
   # Work-around (please see MODULES-1635)
@@ -51,40 +37,38 @@ class profile::postgis {
 
     path => ['/usr/bin', '/bin', ],
   }
+  
+  class { 'postgresql::server::postgis': } ->
+  postgresql::server::database { 'template_postgis':
+    
+    istemplate => true,
+    template => 'template1',
+  } ->
   exec { 'createlang plpgsql template_postgis':
 
     user => 'postgres',
     unless => 'createlang -l template_postgis | grep -q plpgsql',
     require => Postgresql::Server::Database['template_postgis'],
-    } ->
+  } ->
 
-    # Work-around (please see MODULES-1635)
-  file_line { 'insert_lib_dir':
-    
-    path => "${script_path}/postgis.sql",
-    line => "${libdir_path}/",
-    match => '\$libdir'
-    } ->
-
-    # cat /usr/pgsql-8.4/share/contrib/postgis-1.5/postgis.sql | sed s'/$libdir/\/usr\/pgsql-8.4\/lib/' | psql -d template_postgis -f -
-    # "psql -q -d template_postgis -f ${script_path}/postgis.sql"
-    # Work-around (to register this issue with the community to be addressed)
-    #
-  # exec { "cat ${script_path}/postgis.sql | sed s'/$libdir/\/usr\/pgsql-8.4\/lib/' | psql -d template_postgis -f -":
-  exec { "psql -q -d template_postgis -f ${script_path}/postgis.sql":
+  # Work-around (please see MODULES-1635)
+  #
+  exec { "cat ${script_path}/postgis.sql | sed s'#\$libdir#\/usr\/pgsql-${::postgresql::globals::globals_version}\/lib#' | psql -d template_postgis -f -":
+  # exec { "psql -q -d template_postgis -f ${script_path}/postgis.sql":
     user => 'postgres',
     unless => 'echo "\dt" | psql -d template_postgis | grep -q geometry_columns',
     } ->
+    
   exec { "psql -q -d template_postgis -f ${script_path}/spatial_ref_sys.sql":
     user => 'postgres',
     unless => 'test $(psql -At -d template_postgis -c "select count(*) from spatial_ref_sys") -ne 0',
-  }
+  } ->
 
   postgresql::server::role { 'cartaro':
     
     password_hash => postgresql_password('cartaro', 'secret')
-  }
-
+  } ->
+    
   postgresql::server::db { 'cartaro':
     
     user     => 'cartaro',
